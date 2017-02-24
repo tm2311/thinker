@@ -1,0 +1,2 @@
+# thinker
+some thoughts
