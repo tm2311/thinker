@@ -1,0 +1,30 @@
+@Bean("mqContainerFactory")
+@ConditionalOnProperty("amqp.config.addresses")
+public SimpleRabbitListenerContainerFactory mqContainerFactory(@Qualifier("mqConnectionFactory") ConnectionFactory connectionFactory) {
+    SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
+    factory.setConnectionFactory(connectionFactory);
+    factory.setMaxConcurrentConsumers(1);
+    factory.setConcurrentConsumers(1);
+    factory.setAcknowledgeMode(AcknowledgeMode.MANUAL);
+    return factory;
+}
+
+
+@Bean("mqConnectionFactory")
+@ConditionalOnProperty("amqp.config.addresses")
+public ConnectionFactory mqConnectionFactory(@Qualifier("mqPropertySource") AmqpProperties config) {
+    CachingConnectionFactory connectionFactory = new CachingConnectionFactory();
+    connectionFactory.setAddresses(config.getAddresses());
+    connectionFactory.setUsername(config.getUsername());
+    connectionFactory.setPassword(config.getPassword());
+    connectionFactory.setVirtualHost(config.getVirtualHost());
+    connectionFactory.setChannelCacheSize(10);
+    return connectionFactory;
+}
+
+@Bean("mqPropertySource")
+@ConditionalOnProperty("amqp.config.addresses")
+@ConfigurationProperties(prefix = "amqp.mq")
+public AmqpProperties mqPropertySource() {
+    return new AmqpProperties();
+}
