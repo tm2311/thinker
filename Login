@@ -1,0 +1,67 @@
+public AccountDTO login(String loginNo, String password) {
+		validLoginField(loginNo, password);
+		
+		String lockKey = new StringBuilder(REDIS_KEY_ACCOUNT_LOCK).append(":{").append(loginNo).append("}").toString();
+		if(redisTemplate.opsForHash().hasKey(lockKey, String.valueOf(loginNo))) {
+			throw new BizException("user.input.error.times.over.limit");
+		}
+		
+		Account account = accountDao.findByUserNameOrMobile(loginNo);
+		
+		if(account == null) {
+			lockAccount(loginNo);
+			throw new BizException("user.isnot.exist");
+		}
+		
+		AccountDTO accountDTO = new AccountDTO();
+		BeanUtils.copyProperties(account, accountDTO);
+        if (!accountDTO.getPassword().equals(SHA256Utils.encryptPassword(password, salt))) {
+        	lockAccount(loginNo);
+			throw new BizException("user.field.password.error");
+		}
+
+		return accountDTO;
+	}
+
+	private void validLoginField(String loginNo, String password) {
+		if(loginNo == null || loginNo.isEmpty()) {
+			throw new BizException("account.field.loginNo.isnull");
+		}
+		
+		if(password == null || password.isEmpty()) {
+			throw new BizException("account.field.password.isnull");
+		}
+		
+//		Pattern scriptPattern = Pattern.compile(Constants.PASSWORD_PATTERN, Pattern.CASE_INSENSITIVE);
+//		Matcher scriptMatcher = scriptPattern.matcher(password);
+//		if(!scriptMatcher.matches()) {
+//			lockAccount(loginNo);
+//			throw new BizException("user.field.password.error");
+//		}
+	}
+
+	/**
+	 * 锁定账户
+	 * 
+	 * @param loginNo
+	 */
+	private void lockAccount(String loginNo) {
+		String redisKey = new StringBuilder(REDIS_KEY_ACCOUNT_ERRORINPUTTIMES).append(":{").append(loginNo).append("}").toString();
+		
+		// 如果Redis中存在记录，把次数+1
+		if(redisTemplate.opsForHash().hasKey(redisKey, String.valueOf(loginNo))) {
+			int errorInputTimes = Integer.parseInt(redisTemplate.opsForHash().get(redisKey, String.valueOf(loginNo)).toString());
+			errorInputTimes++;
+			if(errorInputTimes >= 10) {
+				// 统一账户连续输错10次，锁定该账户
+				String lockKey = new StringBuilder(REDIS_KEY_ACCOUNT_LOCK).append(":{").append(loginNo).append("}").toString();
+				redisTemplate.opsForHash().put(lockKey, String.valueOf(loginNo), "");
+				redisTemplate.expire(lockKey, accountLockTime, TimeUnit.SECONDS);
+			} else {
+				redisTemplate.opsForHash().put(redisKey, String.valueOf(loginNo), String.valueOf(errorInputTimes));
+			}
+		} else {
+			redisTemplate.opsForHash().put(redisKey, String.valueOf(loginNo), "1");
+			redisTemplate.expire(redisKey, accountInputErrorTimesExpireTime, TimeUnit.SECONDS);
+		}
+	}
