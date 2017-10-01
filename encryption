@@ -1,0 +1,97 @@
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * MD5加密工具类
+ */
+public class MD5Utils {
+
+    protected static final Logger LOG = LoggerFactory.getLogger(MD5Utils.class);
+
+    private static final String MD5 = "md5";
+
+    public static String md5(String value) {
+        try {
+            MessageDigest md = MessageDigest.getInstance(MD5);
+            byte[] e = md.digest(value.getBytes("UTF-8"));
+            return toHexString(e);
+        } catch (Exception e) {
+            LOG.error("md5 has error:", e);
+            return value;
+        }
+    }
+
+    public static String md5(byte[] bytes) {
+        try {
+            MessageDigest md = MessageDigest.getInstance(MD5);
+            byte[] e = md.digest(bytes);
+            return toHexString(e);
+        } catch (NoSuchAlgorithmException e) {
+            LOG.error("md5 has error:", e);
+            return "";
+        }
+    }
+
+    private static String toHexString(byte bytes[]) {
+        StringBuilder hs = new StringBuilder();
+        String stmp = "";
+        for (int n = 0; n < bytes.length; n++) {
+            stmp = Integer.toHexString(bytes[n] & 0xff);
+            if (stmp.length() == 1) {
+                hs.append("0").append(stmp);
+            } else {
+                hs.append(stmp);
+            }
+        }
+        return hs.toString();
+    }
+}
+
+
+import java.security.MessageDigest;
+import org.apache.commons.codec.binary.Hex;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * SHA256加密工具类
+ */
+public class SHA256Utils {
+
+    protected static final Logger LOG = LoggerFactory.getLogger(SHA256Utils.class);
+
+    /***
+     * 利用Apache的工具类实现SHA-256加密
+     * 
+     * @param str 加密后的报文
+     * @return
+     */
+    public static String sha256(String str) {
+        MessageDigest messageDigest;
+        String encdeStr = "";
+        try {
+            messageDigest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = messageDigest.digest(str.getBytes("UTF-8"));
+            encdeStr = Hex.encodeHexString(hash);
+        } catch (Exception e) {
+            LOG.error("getSHA256Str has error:", e);
+            return str;
+        }
+        return encdeStr;
+    }
+    
+    /**
+     * 密码加盐加密
+     * 
+     * @author guanliangyou515
+     * @param password
+     * @param salt
+     * @return
+     */
+    public static String encryptPassword(String password, String salt) {
+        
+        return sha256(sha256(password) + salt);
+    }
+}
