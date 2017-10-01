@@ -63,7 +63,6 @@ public class SHA256Utils {
     protected static final Logger LOG = LoggerFactory.getLogger(SHA256Utils.class);
 
     /***
-     * 利用Apache的工具类实现SHA-256加密
      * 
      * @param str 加密后的报文
      * @return
