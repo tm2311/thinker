@@ -1,0 +1,91 @@
+@Override
+	public ImgAuthCode getImgCode(String sessionId) {
+		ImgAuthCode authCode = new ImgAuthCode(authCodeImgWidth, authCodeImgHeight, codeCountInImg, lineCountInImg);
+
+		String redisKey = new StringBuilder(REDIS_KEY_IMGAUTHCODE).append(":{").append(sessionId).append("}")
+				.toString();
+		LOG.info("[getImgCode]-the redisKey is : {}", redisKey);
+		redisTemplate.opsForHash().put(redisKey, String.valueOf(sessionId), authCode.getCode());
+		redisTemplate.expire(redisKey, imgCodeExpireTime, TimeUnit.SECONDS);
+
+		return authCode;
+	}
+
+	@Override
+	public boolean validateImgCode(String sessionId, String code) {
+		String redisKey = new StringBuilder(REDIS_KEY_IMGAUTHCODE).append(":{").append(sessionId).append("}").toString();
+		LOG.info("[validateImgCode]-the redisKey is : {}", redisKey);
+		if (redisTemplate.opsForHash().hasKey(redisKey, String.valueOf(sessionId))) {
+			String codeInRedis = String.valueOf(redisTemplate.opsForHash().get(redisKey, String.valueOf(sessionId)));
+			if (code.toUpperCase().equals(codeInRedis)) {
+				return true;
+			} else {
+				throw new BizException("img.auth.code.illegal");
+			}
+		} else {
+			throw new BizException("img.auth.code.timeout");
+		}
+	}
+
+	@Override
+	public String sendMsgCode(String mobile, String imgAuthCode, String sessionId) {
+		this.validateImgCode(sessionId, imgAuthCode);
+		String redisKey = new StringBuilder(REDIS_KEY_MSGAUTHCODE).append(":{").append(sessionId).append("}")
+				.append(":{").append(mobile).append("}").toString();
+		LOG.info("[sendMsgCode]-the redisKey is : {}", redisKey);
+		
+		if (redisTemplate.opsForHash().hasKey(redisKey, String.valueOf(sessionId))) {
+			// 如果存在短信验证码，则取出验证码存储进redis中的时间
+			String msgAuthCodeString = String.valueOf(redisTemplate.opsForHash().get(redisKey, String.valueOf(sessionId)));
+			MsgAuthCodeDTO msgAuthCodeDTO = JSONObject.parseObject(msgAuthCodeString, MsgAuthCodeDTO.class);
+			long lastGettingTimeMillis = msgAuthCodeDTO.getGettingTime();
+			long curTimeMillis = System.currentTimeMillis();
+			// 如果此次获取验证码的时间距离上次小于30秒
+			if(curTimeMillis - lastGettingTimeMillis < 30000) {
+				LOG.error("The time interval of get msg code is too short, less than 30 seconds");
+				throw new BizException("msg.auth.code.time.interval.short");
+			}
+			
+			// 清除验证码
+			redisTemplate.opsForHash().delete(redisKey, String.valueOf(sessionId));
+		}
+		// 随机生成一个6位随机验证码
+		String msgCode = String.valueOf((int) ((Math.random() * 9 + 1) * 100000));
+		MsgAuthCodeDTO msgAuthCodeDTO = new MsgAuthCodeDTO();
+		msgAuthCodeDTO.setCode(msgCode);
+		msgAuthCodeDTO.setGettingTime(System.currentTimeMillis());
+		redisTemplate.opsForHash().put(redisKey, String.valueOf(sessionId), JSONObject.toJSON(msgAuthCodeDTO).toString());
+		redisTemplate.expire(redisKey, msgCodeExpireTime, TimeUnit.SECONDS);
+
+		// 调用短信接口，向手机发送短信验证码
+		RegisterAndForgetPasswordSmsParamDTO dto = new RegisterAndForgetPasswordSmsParamDTO();
+		SmsParamDTO<RegisterAndForgetPasswordSmsParamDTO> smsSendDTO = new SmsParamDTO<RegisterAndForgetPasswordSmsParamDTO>();
+		dto.setCode(msgCode);
+		dto.setTelephone(customerTel);
+		smsSendDTO.setBid(registerBid);
+		smsSendDTO.setMobile(mobile);
+		smsSendDTO.setParams(dto);
+		smsRpcService.sendSms(smsSendDTO);
+		
+		return msgCode;
+	}
+
+	@Override
+	public boolean validateMsgCode(String sessionId, String mobile, String code) {
+		String redisKey = new StringBuilder(REDIS_KEY_MSGAUTHCODE).append(":{").append(sessionId).append("}")
+				.append(":{").append(mobile).append("}").toString();
+		LOG.info("[validateMsgCode]-the redisKey is : {}", redisKey);
+		if (redisTemplate.opsForHash().hasKey(redisKey, String.valueOf(sessionId))) {
+			String msgAuthCodeString = String.valueOf(redisTemplate.opsForHash().get(redisKey, String.valueOf(sessionId)));
+			MsgAuthCodeDTO msgAuthCodeDTO = JSONObject.parseObject(msgAuthCodeString, MsgAuthCodeDTO.class);
+			String codeInRedis = msgAuthCodeDTO.getCode();
+			if (code.equals(codeInRedis)) {
+				return true;
+			} else {
+				throw new BizException("msg.auth.code.illegal");
+			}
+		} else {
+			throw new BizException("msg.auth.code.timeout");
+		}
+
+	}
